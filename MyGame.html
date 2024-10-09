@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phaser Scaled Game</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser-arcade-physics.min.js"></script>
+    <link rel="stylesheet" href="MyGame.css">
+</head>
+<body>
+
+    <script>
+        var config = {
+            type: Phaser.AUTO,
+            width: window.innerWidth,
+            height: window.innerHeight,
+            physics: {
+                default: 'arcade',
+                arcade: {
+                    gravity: { y: 700 },
+                    debug: false
+                }
+            },
+            scale: {
+                mode: Phaser.Scale.RESIZE,
+                autoCenter: Phaser.Scale.CENTER_BOTH
+            },
+            scene: {
+                preload: preload,
+                create: create,
+                update: update
+            }
+        };
+
+        var game = new Phaser.Game(config);
+        var player;
+        var platforms;
+        var cursors;
+        var background;
+        var double_jump = false;
+        var double_jump_mechanic = false;
+        var medalVisible = false;
+        var playerMedalOverlap = true;
+    
+
+        var worldWidth = 4000;  
+        var worldHeight = 2000; 
+        var medalSpawnDistance = 400;
+        var proximityTimer = 0;
+        var proximityThreshold = 4;
+        var TextSpawnDistance = 250;
+
+        function preload () {
+            this.load.image('sky', 'assets/sky.png');
+            this.load.image("platform1", "assets/platform1.png");
+            this.load.image("keys", "assets/keys.png");
+            this.load.image("double_jump_medal", "assets/double_jump_medal.png");
+            this.load.image("platform2", "assets/platform2.png")
+            this.load.spritesheet('dude_run', 'assets/Ninja_running.png', { frameWidth: 70, frameHeight: 72 });
+            this.load.spritesheet('dude_idle', 'assets/Ninja_idle.png', { frameWidth: 45, frameHeight: 72 });
+        }
+
+        function create () {
+            this.keys = this.input.keyboard.addKeys({
+                w: Phaser.Input.Keyboard.KeyCodes.W,
+                a: Phaser.Input.Keyboard.KeyCodes.A,
+                s: Phaser.Input.Keyboard.KeyCodes.S,
+                d: Phaser.Input.Keyboard.KeyCodes.D,
+                f: Phaser.Input.Keyboard.KeyCodes.F,
+                q: Phaser.Input.Keyboard.KeyCodes.Q
+            });
+
+            // Set the background width to the worldWidth and keep the height as the camera's height
+            background = this.add.tileSprite(0, 0, worldWidth, this.cameras.main.height, 'sky').setOrigin(0, 0);
+
+            this.physics.world.setBounds(0, 0, worldWidth, worldHeight);
+            this.cameras.main.setBounds(0, 0, worldWidth, worldHeight);
+
+            platforms = this.physics.add.staticGroup();
+
+            let platform = this.add.tileSprite(500, 600, 1000, 150, 'platform1');
+            this.physics.add.existing(platform, true); 
+            platform.body.updateFromGameObject(); 
+            
+            platforms.add(platform);
+            platforms.create(1300, 600, 'platform1');
+            platforms.create(1800, 600, 'platform1');
+            platforms.create(2600, 600, 'platform1');
+            platforms.create(3300, 600, "platform2");
+
+
+            medal = this.physics.add.image(1800, 200, "double_jump_medal").setVisible(false);
+            medal.body.setAllowGravity(false);
+            this.physics.add.collider(medal, platforms);
+
+            this.add.image(400, 200, "keys");
+
+            player = this.physics.add.sprite(100, 300, 'dude_idle');
+            player.setScale(1.5);
+            player.setCollideWorldBounds(true); 
+
+            this.physics.add.collider(player, platforms);
+            if (playerMedalOverlap) {
+                this.physics.add.overlap(player, medal, collectMedal, null, this);
+            }
+
+            medalText1 = this.add.text(1700, 200, "Double Jump!"), {
+                    fontSize: '70px', 
+                    fill: '#ffffff', 
+                };
+
+            cursors = this.input.keyboard.createCursorKeys();
+
+            this.anims.create({
+                key: 'left',
+                frames: this.anims.generateFrameNumbers('dude_run', { start: 0, end: 6 }),
+                frameRate: 20,
+                repeat: -1
+            });
+
+            this.anims.create({
+                key: 'turn',
+                frames: this.anims.generateFrameNumbers('dude_idle', { start: 0, end: 6 }), 
+                frameRate: 4, 
+                repeat: -1 
+            });
+
+            this.anims.create({
+                key: 'right',
+                frames: this.anims.generateFrameNumbers('dude_run', { start: 0, end: 6 }),
+                frameRate: 20,
+                repeat: -1
+            });
+
+            this.cameras.main.startFollow(player, true, 0.1, 0.1);
+
+            tutText = this.add.text(1900, 200, 'A bit to far to jump... right?', { 
+                fontSize: '32px', 
+                fill: '#ffffff',  
+            });
+            medal.setVisible(false); 
+            tutText.setVisible(false);
+            medalText1.setVisible(false); 
+        }
+
+        function update() {
+            background.tilePositionX = this.cameras.main.scrollX * 0.5; // Adjust background scrolling
+
+            // Player movement
+            if (this.keys.a.isDown) {
+                player.setVelocityX(-260);
+                player.anims.play('left', true);
+                player.flipX = true;
+            } else if (this.keys.d.isDown) {
+                player.setVelocityX(260);
+                player.anims.play('right', true);
+                player.flipX = false;
+            } else {
+                player.setVelocityX(0);
+                player.anims.play('turn');
+            }
+
+            // Jump and double jump logic
+            if (this.keys.w.isDown && player.body.touching.down) {
+                player.setVelocityY(-430);
+                double_jump_mechanic = true;
+            }
+
+            if (this.keys.w.isDown && !player.body.touching.down && double_jump && double_jump_mechanic && player.body.velocity.y > 20) {
+                player.setVelocityY(-300);
+                double_jump_mechanic = false;
+            }
+
+            checkMedalVisibility();
+            checkTextVisibility();
+
+            if (!playerMedalOverlap) {
+                let bottomLeftX = this.cameras.main.worldView.x + 90; 
+                let bottomLeftY = this.cameras.main.worldView.y + this.cameras.main.height - 75; 
+
+                medal.setPosition(bottomLeftX, bottomLeftY); 
+            }
+        }
+
+        function checkMedalVisibility() {
+            var distanceToMedal = Phaser.Math.Distance.Between(player.x, player.y, medal.x, medal.y);
+            if (distanceToMedal < medalSpawnDistance) {
+                proximityTimer += game.loop.delta / 1000; 
+                if (proximityTimer >= proximityThreshold) {
+                    medal.setVisible(true);
+                } 
+            }
+        }
+
+        function checkTextVisibility() {
+            var distanceToMedal = Phaser.Math.Distance.Between(player.x, player.y, tutText.x, tutText.y);
+            if (distanceToMedal < TextSpawnDistance) {
+                tutText.setVisible(true);
+            }
+        }
+
+        function collectMedal(player, medal) {
+            medal.setScale(4);
+            medal.setDepth(1);
+
+            let cameraCenterX = this.cameras.main.worldView.x + this.cameras.main.width / 2;
+            let cameraCenterY = this.cameras.main.worldView.y + this.cameras.main.height / 2;
+
+            this.tweens.add({
+                targets: medal,
+                x: cameraCenterX,
+                y: cameraCenterY,
+                ease: 'Power1',
+                duration: 1000,
+                onComplete: () => {
+                    double_jump = true;
+                    playerMedalOverlap = false;
+                    console.log("double jump enabled");
+
+                    let bottomLeftX = this.cameras.main.worldView.x + 90;
+                    let bottomLeftY = this.cameras.main.worldView.y + this.cameras.main.height - 75;
+
+                    this.tweens.add({
+                        targets: medal,
+                        x: bottomLeftX,
+                        y: bottomLeftY,
+                        scale: 1.5,  
+                        ease: 'Power1', 
+                        duration: 1000 
+                    });
+                }
+            });
+        }
+
+
+        window.addEventListener('resize', function () {
+            game.scale.resize(window.innerWidth, window.innerHeight);
+            background.setSize(worldWidth, game.scale.height); 
+        });
+    </script>
+
+</body>
+</html>
